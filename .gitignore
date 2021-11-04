@@ -1,0 +1,6 @@
+**/__pycache__
+*.npy
+*.tmp
+*.png
+*.zip
+*.pth
