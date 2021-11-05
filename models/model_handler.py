@@ -40,8 +40,10 @@ class ModelHandler:
         script_folder = os.path.dirname(os.path.realpath(__file__))
         return os.path.join(script_folder, LOG_FOLDER, self.name)
 
-    def log_folder(self):
-        return os.path.join(self.model_folder(), f"run_{self.iteration}")
+    def log_folder(self, iteration=None):
+        if iteration is None:
+            iteration = self.iteration
+        return os.path.join(self.model_folder(), f"run_{iteration}")
 
     def load_weights(self):
         raise NotImplementedError
@@ -93,11 +95,15 @@ class VaeGanHandler(ModelHandler):
         self.epoch_disc_loss = 0
 
     def load_weights(self):
-        vae_savepath = os.path.join(self.log_folder(), "vae_weights.pth")
-        disc_savepath = os.path.join(self.log_folder(), "disc_weights.pth")
-        if os.path.exists(vae_savepath) and os.path.exists(disc_savepath):
-            self.vae.load_state_dict(torch.load(vae_savepath))
-            self.discriminator.load_state_dict(torch.load(disc_savepath))
+        for prev_it in range(1, self.iteration)[::-1]:
+            vae_savepath = os.path.join(self.log_folder(prev_it), "vae_weights.pth")
+            disc_savepath = os.path.join(self.log_folder(prev_it), "disc_weights.pth")
+            if os.path.exists(vae_savepath) and os.path.exists(disc_savepath):
+                print(f"Loading weights from {self.name}, run {prev_it}")
+                self.vae.load_state_dict(torch.load(vae_savepath))
+                self.discriminator.load_state_dict(torch.load(disc_savepath))
+                return
+        return
 
     def save_weights(self):
         vae_savepath = os.path.join(self.log_folder(), "vae_weights.pth")
@@ -134,7 +140,7 @@ class VaeGanHandler(ModelHandler):
         self.vae_opt.step()
 
         # Save metrics
-        self.epoch_size += 1
+        self.epoch_size += minibatch.shape[0]
         self.epoch_vae_loss += vae_loss.item()
         self.epoch_vae_recon_loss += recon_loss.item()
         self.epoch_vae_kl_loss += kl_loss.item()

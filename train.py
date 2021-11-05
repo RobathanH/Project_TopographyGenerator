@@ -1,6 +1,7 @@
 import rasterio
 import numpy as np
 import tqdm
+import sys
 
 import torch
 import torch.nn as nn
@@ -32,7 +33,8 @@ def train(model_name, epochs=20):
     val_data = data[:val_size]
 
     # Begin training epochs
-    for epoch in tqdm.trange(epochs, desc="Epochs"):
+    print(f"\n\nTraining {model.name} (run {model.iteration})")
+    for epoch in tqdm.trange(epochs, desc=f"{epochs} Training Epochs"):
         # Reshuffle data
         np.random.shuffle(train_data)
 
@@ -60,4 +62,11 @@ def train(model_name, epochs=20):
 
 
 if __name__ == '__main__':
-    train("simple_conv_1")
+    DEFAULT_NAME = "simple_conv_1"
+
+    if len(sys.argv) >= 2:
+        name = sys.argv[1]
+    else:
+        name = DEFAULT_NAME
+
+    train(name)
