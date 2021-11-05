@@ -17,10 +17,9 @@ AUGMENT_LAT_FLIP = False
 
 
 class DataLoader:
-    def __init__(self, shape, region_lng_len, region_lat_len):
-        self.shape = shape
-        self.region_lng_len = region_lng_len
-        self.region_lat_len = region_lat_len
+    def __init__(self, img_shape, region_dims):
+        self.shape = img_shape
+        self.region_lng_len, self.region_lat_len = region_dims
 
         # Load cache if it exists
         if os.path.exists(self.cache_path()):
