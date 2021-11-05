@@ -23,7 +23,7 @@ Plots and saves a list of images
 '''
 def save_images(imgs, title=None, filename="temp.png"):
     count = imgs.shape[0]
-    fig, axarr = plt.subplots(count, 1, figsize=(6, 3 * count))
+    fig, axarr = plt.subplots(count, 1, figsize=(6, 3 * count), constrained_layout=True)
     for i in range(count):
         fixed_zero_imshow(imgs[i], axarr[i])
     
@@ -38,7 +38,7 @@ Plots and saves two lists of corresponding images side by side
 '''
 def save_images2(imgs1, imgs2, main_title=None, title1=None, title2=None, filename="temp.png"):
     count = min(imgs1.shape[0], imgs2.shape[0])
-    fig, axarr = plt.subplots(count, 2, figsize=(9, 3 * count))
+    fig, axarr = plt.subplots(count, 2, figsize=(9, 3 * count), constrained_layout=True)
     for i in range(count):
         fixed_zero_imshow(imgs1[i], axarr[i][0])
         fixed_zero_imshow(imgs2[i], axarr[i][1])

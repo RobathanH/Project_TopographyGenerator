@@ -80,8 +80,6 @@ class ResBlock(nn.Module):
         out = nn.ReLU()(x + z)
         return out
 
-# ASSUMES IMG DIMS AND LATENT DIMS HAVE POWER OF 2 RELATIONSHIP,
-# SAME EXPONENTIAL FACTOR FOR BOTH DIMS
 def ResNetImgDownsize():
     START_CHANNELS = 32
     
