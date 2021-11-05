@@ -1,5 +1,5 @@
-from model_handler import *
-from util import *
+from .model_handler import *
+from .util import *
 
 
 def get_model(name):

@@ -43,6 +43,6 @@ class ConvVAE(nn.Module):
 
     def forward(self, x):
         z_mean, z_log_var = self.encoder(x)
-        z = self.sampler(z_mean, z_log_var)
+        z = self.sampler((z_mean, z_log_var))
         reconstruction = self.decoder(z)
         return reconstruction, z_mean, z_log_var

@@ -4,13 +4,13 @@ from torch.utils import tensorboard
 import os
 import numpy as np
 
-from util import *
+from .util import *
 import data.util
 
 # Constants
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-LOG_FOLDER = 'log'
-
+LOG_FOLDER = 'logs'
+VAL_BATCH_SIZE = 32
 
 
 
@@ -25,10 +25,11 @@ class ModelHandler:
 
         # Find latest log iteration for this model name
         prev_iteration = 0
-        for file in os.listdir(self.log_folder()):
-            file = file.split('_')
-            if len(file) == 2 and file[0] == "run" and int(file[1]) > prev_iteration:
-                prev_iteration = int(file[1])
+        if os.path.exists(self.model_folder()):
+            for file in os.listdir(self.model_folder()):
+                file = file.split('_')
+                if len(file) == 2 and file[0] == "run" and int(file[1]) > prev_iteration:
+                    prev_iteration = int(file[1])
         
         self.iteration = prev_iteration + 1
 
@@ -70,8 +71,8 @@ class VaeGanHandler(ModelHandler):
         super(VaeGanHandler, self).__init__(name, img_dims, region_dims)
 
         # Save networks
-        self.vae = ConvVAE(encoder, decoder)
-        self.discriminator = discriminator
+        self.vae = ConvVAE(encoder, decoder).to(DEVICE)
+        self.discriminator = discriminator.to(DEVICE)
 
         # Optimizers
         self.vae_opt = torch.optim.Adam(self.vae.parameters())
@@ -142,24 +143,47 @@ class VaeGanHandler(ModelHandler):
 
     def epoch_complete(self, epoch_idx, val_data):
         # Find val loss
-        val_x = torch.tensor(val_data.reshape(val_data.shape[:1] + (1,) + val_data.shape[1:])).to(DEVICE)
-        val_disc_loss = self.discriminator_loss_fn(val_x)
-        val_vae_recon_loss, val_vae_kl_loss, val_vae_gan_loss = self.vae_loss_fn(val_x)
-        val_vae_loss = val_vae_recon_loss + val_vae_kl_loss + val_vae_gan_loss
+        total_val_vae_loss = 0
+        total_val_vae_recon_loss = 0
+        total_val_vae_kl_loss = 0
+        total_val_vae_gan_loss = 0
+        total_val_disc_loss = 0
+
+        batch_start = 0
+        while batch_start < val_data.shape[0]:
+            batch_size = min(VAL_BATCH_SIZE, val_data.shape[0] - batch_start)
+            val_batch = val_data[batch_start : batch_start + batch_size]
+            val_x = torch.tensor(val_batch.reshape(val_batch.shape[:1] + (1,) + val_batch.shape[1:])).to(DEVICE)
+            val_disc_loss = self.discriminator_loss_fn(val_x)
+            val_vae_recon_loss, val_vae_kl_loss, val_vae_gan_loss = self.vae_loss_fn(val_x)
+            val_vae_loss = val_vae_recon_loss + val_vae_kl_loss + val_vae_gan_loss
+
+            total_val_vae_loss += val_vae_loss.item()
+            total_val_vae_recon_loss += val_vae_recon_loss.item()
+            total_val_vae_kl_loss += val_vae_kl_loss.item()
+            total_val_vae_gan_loss += val_vae_gan_loss.item()
+            total_val_disc_loss += val_disc_loss.item()
+
+            batch_start += VAL_BATCH_SIZE
+        val_vae_loss = total_val_vae_loss / val_data.shape[0]
+        val_vae_recon_loss = total_val_vae_recon_loss / val_data.shape[0]
+        val_vae_kl_loss = total_val_vae_kl_loss / val_data.shape[0]
+        val_vae_gan_loss = total_val_vae_gan_loss / val_data.shape[0]
+        val_disc_loss = total_val_disc_loss / val_data.shape[0]
 
         # Log val loss
-        self.writer.AddScalar("eval/vae_loss", val_vae_loss.item(), epoch_idx)
-        self.writer.AddScalar("eval/vae_recon_loss", val_vae_recon_loss.item(), epoch_idx)
-        self.writer.AddScalar("eval/vae_kl_loss", val_vae_kl_loss.item(), epoch_idx)
-        self.writer.AddScalar("eval/vae_gan_loss", val_vae_gan_loss.item(), epoch_idx)
-        self.writer.AddScalar("eval/discriminator_loss", val_disc_loss.item(), epoch_idx)
+        self.writer.add_scalar("eval/vae_loss", val_vae_loss, epoch_idx)
+        self.writer.add_scalar("eval/vae_recon_loss", val_vae_recon_loss, epoch_idx)
+        self.writer.add_scalar("eval/vae_kl_loss", val_vae_kl_loss, epoch_idx)
+        self.writer.add_scalar("eval/vae_gan_loss", val_vae_gan_loss, epoch_idx)
+        self.writer.add_scalar("eval/discriminator_loss", val_disc_loss, epoch_idx)
 
         # Log train loss
-        self.writer.AddScalar("train/vae_loss", self.epoch_vae_loss / self.epoch_size, epoch_idx)
-        self.writer.AddScalar("train/vae_recon_loss", self.epoch_vae_recon_loss / self.epoch_size, epoch_idx)
-        self.writer.AddScalar("train/vae_kl_loss", self.epoch_vae_kl_loss / self.epoch_size, epoch_idx)
-        self.writer.AddScalar("train/vae_gan_loss", self.epoch_vae_gan_loss / self.epoch_size, epoch_idx)
-        self.writer.AddScalar("train/discriminator_loss", self.epoch_disc_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/vae_loss", self.epoch_vae_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/vae_recon_loss", self.epoch_vae_recon_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/vae_kl_loss", self.epoch_vae_kl_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/vae_gan_loss", self.epoch_vae_gan_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/discriminator_loss", self.epoch_disc_loss / self.epoch_size, epoch_idx)
 
         # Reset train loss vars
         self.epoch_size = 0
@@ -172,7 +196,7 @@ class VaeGanHandler(ModelHandler):
         # Save some examples from the val_data
         rand_inds = np.random.choice(np.arange(val_data.shape[0]), 20)
         example_imgs = val_data[rand_inds]
-        net_input = torch.tensor(example_imgs).to(DEVICE)
+        net_input = torch.tensor(example_imgs.reshape(example_imgs.shape[:1] + (1,) + example_imgs.shape[1:])).to(DEVICE)
         net_output, _, _ = self.vae(net_input)
         example_reconstructions = net_output.detach().cpu().numpy().reshape(example_imgs.shape)
         data.util.save_images2(example_imgs, example_reconstructions, main_title=f"{self.name}_epoch{epoch_idx}",

@@ -123,7 +123,7 @@ Cache to load particular lat/lng window files
 Returns np.ndarray if the requested window exists,
 and None if it doesn't.
 '''
-@lru_cache(maxsize=20)
+@lru_cache(maxsize=50)
 def load_window(lng, lat):
     save_path = data_savename(lng, lat)
     if os.path.exists(save_path):

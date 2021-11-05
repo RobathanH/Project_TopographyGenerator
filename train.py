@@ -1,4 +1,4 @@
-from re import split
+import rasterio
 import numpy as np
 import tqdm
 
@@ -23,22 +23,21 @@ def train(model_name, epochs=20):
     model.load_weights()
 
     # Load data
-    data = DataLoader(model.img_dims, model.region_dims)
-    data = data.load_full_data()
+    data = DataLoader(model.img_dims, model.region_dims).data
     np.random.shuffle(data)
 
     # Split data
-    split_ind = round(data.shape[0] * 0.9)
-    train_data = data[:split_ind]
-    val_data = data[split_ind:]
+    val_size = min(int(0.1 * data.shape[0]), 1000)
+    train_data = data[val_size:]
+    val_data = data[:val_size]
 
     # Begin training epochs
-    for epoch in range(epochs):
+    for epoch in tqdm.trange(epochs, desc="Epochs"):
         # Reshuffle data
         np.random.shuffle(train_data)
 
         batch_start = 0
-        pbar = tqdm.tqdm(total=train_data.shape[0])
+        pbar = tqdm.tqdm(total=train_data.shape[0], leave=False)
         while batch_start < train_data.shape[0]:
             # Collect minibatch data
             current_minibatch_size = min(BATCH_SIZE, train_data.shape[0] - batch_start)
@@ -61,4 +60,4 @@ def train(model_name, epochs=20):
 
 
 if __name__ == '__main__':
-    train("test")
+    train("simple_conv_1")

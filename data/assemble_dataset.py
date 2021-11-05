@@ -1,19 +1,20 @@
 import numpy as np
 import tqdm
+import os
 from collections import deque
 
-from get_data import *
-from util import *
+from .get_data import *
+from .util import *
 
 # Constants for data filtering and augmentation
-FILTER_ENABLED = True
+FILTER_ENABLED = False
 FILTER_MIN_VAR = 0.01**2 # filter out images below this variance threshold
 FILTER_MIN_LANDMASS = 0.05 # filter out images with relative landmass area below this threshold
 
 TRANSLATION_RELATIVE_DISTANCE = 0.1 # shift input images by this fraction of width/height between samples
 
-AUGMENT_LNG_FLIP = False
-AUGMENT_LAT_FLIP = False
+AUGMENT_LNG_FLIP = True
+AUGMENT_LAT_FLIP = True
 
 
 class DataLoader:
