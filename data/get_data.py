@@ -107,7 +107,7 @@ def save_dataset():
             # Convert pixel order:
             #   west -> east = axis 0 low to high
             #   south -> north = axis 1 low to high
-            img = np.tranpose(np.flip(img, axis=0))
+            img = np.transpose(np.flip(img, axis=0))
             
             # Save img to coord-labeled file
             np.save(data_savename(lng, lat, create_folder=True), img)

@@ -1,3 +1,34 @@
+'''
+
+NOTE!
+
+This entire script is no longer in use, and its functionality has been modularized and moved into other scripts.
+It remains only for my own reference, as this contains information on some of my initial tests.
+
+'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 import tqdm
@@ -80,6 +111,8 @@ class ResBlock(nn.Module):
         out = nn.ReLU()(x + z)
         return out
 
+# ASSUMES IMG DIMS AND LATENT DIMS HAVE POWER OF 2 RELATIONSHIP,
+# SAME EXPONENTIAL FACTOR FOR BOTH DIMS
 def ResNetImgDownsize():
     START_CHANNELS = 32
     
