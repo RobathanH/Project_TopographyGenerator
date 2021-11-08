@@ -22,14 +22,6 @@ class DataLoader:
         self.shape = img_shape
         self.region_lng_len, self.region_lat_len = region_dims
 
-        # Load cache if it exists
-        if os.path.exists(self.cache_path()):
-            print("Loading cached formatted dataset")
-            self.data = np.load(self.cache_path())
-        else:
-            print("Creating formatted dataset")
-            self.load_full_data()
-
     def cache_path(self):
         identifiers = ["dataset"]
         identifiers += [f"output_{self.shape[0]}x{self.shape[1]}"]
@@ -44,6 +36,15 @@ class DataLoader:
             identifiers += [f"augment_latflip"]
 
         return os.path.join(data_savefolder(), ".".join(identifiers) + ".npy")
+
+    def get_data(self):
+        # Load cache if it exists
+        if os.path.exists(self.cache_path()):
+            print("Loading cached formatted dataset")
+            self.data = np.load(self.cache_path())
+        else:
+            print("Creating formatted dataset")
+            self.load_full_data()
 
     '''
     Plots and shows some randomly chosen samples from the dataset

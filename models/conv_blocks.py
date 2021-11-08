@@ -137,3 +137,23 @@ class StyleGanBlock(nn.Module):
         x, _ = self.ada2((x, z))
 
         return x, z
+
+
+
+class GatedConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, activation=nn.ELU()):
+        padding = dilation * (kernel_size - 1) // 2
+
+        self.conv = nn.Conv2d(
+            in_channels=in_channels, out_channels=2 * out_channels,
+            kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation
+        )
+        self.activation = activation
+
+    def forward(self, x):
+        x = self.conv(x)
+        x, m = x[:, :self.out_channels], x[:, self.out_channels:]
+        m = torch.sigmoid(m)
+        if self.activation is not None:
+            x = self.activation(x)
+        return x * m
