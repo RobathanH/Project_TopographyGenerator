@@ -162,18 +162,43 @@ class DeepFillHandler(ModelHandlerBase):
 
 
     # --- Private Helper Functions ---
-    def discriminator_loss_fn(self, img, mask):
-        generated = self.gen(img, mask)
 
-        disc_loss = (torch.sum(-torch.log(self.disc(img, mask))) + torch.sum(-torch.log(1 - self.disc(generated, mask)))) / 2
+    '''
+    Original implementation uses GAN hinge loss
+    '''
+    def discriminator_loss_fn(self, img, mask):
+        coarse_generated, refined_generated = self.gen(img, mask)
+
+        # Only use generator output within masked space for discriminator
+        patched_generated = refined_generated * mask + img * (1 - mask)
+
+        pos_hinge_loss = torch.mean(torch.relu(1 - self.disc(img, mask)), axis=(1, 2, 3))
+        neg_hinge_loss = torch.mean(torch.relu(1 + self.disc(patched_generated, mask)), axis=(1, 2, 3))
+
+
+        disc_loss = torch.sum(
+            0.5 * pos_hinge_loss + 0.5 * neg_hinge_loss
+        )
         
         return disc_loss
 
+    '''
+    Original implementation uses:
+        recon loss = l1 reconstruction loss on both coarse and refined generations
+        gan loss = hinge loss from (https://github.com/pfnet-research/sngan_projection/blob/c26cedf7384c9776bcbe5764cb5ca5376e762007/updater.py)
+    '''
     def generator_loss_fn(self, img, mask):
-        generated = self.gen(img, mask)
+        coarse_generated, refined_generated = self.gen(img, mask)
 
-        recon_loss = self.GEN_RECON_RELATIVE_LOSS_WEIGHT * torch.sum(torch.mean((img - generated).pow(2) / 2), axis=(1, 2, 3))
-        gan_loss = self.GEN_GAN_RELATIVE_LOSS_WEIGHT * -torch.sum(torch.log(self.disc(img, mask)))
+        # Only use generated output within masked space for discriminator
+        patched_generated = refined_generated * mask + img * (1 - mask)
+
+        recon_loss = self.GEN_RECON_RELATIVE_LOSS_WEIGHT * torch.sum(
+            torch.mean(torch.abs(img - coarse_generated) + torch.abs(img - refined_generated), axis=(1, 2, 3))
+        )
+        gan_loss = self.GEN_GAN_RELATIVE_LOSS_WEIGHT * torch.sum(
+            -torch.mean(self.disc(patched_generated, mask), axis=(1, 2, 3))
+        )
         
         return recon_loss, gan_loss
 
