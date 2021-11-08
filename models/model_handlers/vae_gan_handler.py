@@ -53,6 +53,19 @@ class VaeGanHandler(ModelHandlerBase):
         )
         return message
 
+    def summary(self):
+        out = []
+
+        out += ["", "VAE:"]
+        out += [f"Parameter Count = {sum(p for p in self.vae.parameters() if p.requires_grad)}"]
+        out += [str(self.vae)]
+
+        out += ["", "Discriminator:"]
+        out += [f"Parameter Count = {sum(p for p in self.discriminator.parameters() if p.requires_grad)}"]
+        out += [str(self.discriminator)]
+
+        return "\n".join(out)
+
     def train_minibatch(self, minibatch):
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
         x = torch.tensor(minibatch).to(DEVICE)
@@ -79,7 +92,7 @@ class VaeGanHandler(ModelHandlerBase):
         self.epoch_vae_gan_loss += gan_loss.item()
         self.epoch_disc_loss += discriminator_loss.item()
 
-    def epoch_complete(self, epoch_idx, val_data):
+    def log_metrics(self, epoch_idx, val_data, epoch_complete=True):
         # Find val loss
         total_val_vae_loss = 0
         total_val_vae_recon_loss = 0

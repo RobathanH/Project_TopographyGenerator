@@ -6,33 +6,33 @@ from collections import deque
 from .get_data import *
 from .util import *
 
-# Constants for data filtering and augmentation
-FILTER_ENABLED = False
-FILTER_MIN_VAR = 0.01**2 # filter out images below this variance threshold
-FILTER_MIN_LANDMASS = 0.05 # filter out images with relative landmass area below this threshold
-
-TRANSLATION_RELATIVE_DISTANCE = 0.1 # shift input images by this fraction of width/height between samples
-
-AUGMENT_LNG_FLIP = True
-AUGMENT_LAT_FLIP = True
-
 
 class DataLoader:
     def __init__(self, img_shape, region_dims):
         self.shape = img_shape
         self.region_lng_len, self.region_lat_len = region_dims
 
+        # Constants for data filtering and augmentation
+        self.FILTER_ENABLED = False
+        self.FILTER_MIN_VAR = 0.01**2 # filter out images below this variance threshold
+        self.FILTER_MIN_LANDMASS = 0.05 # filter out images with relative landmass area below this threshold
+
+        self.TRANSLATION_RELATIVE_DISTANCE = 0.1 # shift input images by this fraction of width/height between samples
+
+        self.AUGMENT_LNG_FLIP = True
+        self.AUGMENT_LAT_FLIP = True
+
     def cache_path(self):
         identifiers = ["dataset"]
         identifiers += [f"output_{self.shape[0]}x{self.shape[1]}"]
         identifiers += [f"input_{self.region_lng_len}x{self.region_lat_len}"]
-        identifiers += [f"translation_{TRANSLATION_RELATIVE_DISTANCE}"]
-        if FILTER_ENABLED:
-            identifiers += [f"filter_var_{FILTER_MIN_VAR}"]
-            identifiers += [f"filter_landmass_{FILTER_MIN_LANDMASS}"]
-        if AUGMENT_LNG_FLIP:
+        identifiers += [f"translation_{self.TRANSLATION_RELATIVE_DISTANCE}"]
+        if self.FILTER_ENABLED:
+            identifiers += [f"filter_var_{self.FILTER_MIN_VAR}"]
+            identifiers += [f"filter_landmass_{self.FILTER_MIN_LANDMASS}"]
+        if self.AUGMENT_LNG_FLIP:
             identifiers += [f"augment_lngflip"]
-        if AUGMENT_LAT_FLIP:
+        if self.AUGMENT_LAT_FLIP:
             identifiers += [f"augment_latflip"]
 
         return os.path.join(data_savefolder(), ".".join(identifiers) + ".npy")
@@ -63,7 +63,7 @@ class DataLoader:
         lat = LAT_MIN
 
         lat_iterations = (LAT_MAX - LAT_MIN - self.region_lat_len) / (self.region_lat_len * TRANSLATION_RELATIVE_DISTANCE) + 1
-        lng_iterations = (LNG_MAX - LNG_MIN) / (self.region_lng_len * TRANSLATION_RELATIVE_DISTANCE)
+        lng_iterations = (LNG_MAX - LNG_MIN) / (self.region_lng_len * self.TRANSLATION_RELATIVE_DISTANCE)
         total_iterations = lng_iterations * lat_iterations
         pbar = tqdm.tqdm(total=total_iterations, desc="Loading regions into compiled dataset")
 
@@ -71,21 +71,21 @@ class DataLoader:
         def increment():
             nonlocal lng, lat
             pbar.update(1)
-            lat += self.region_lat_len * TRANSLATION_RELATIVE_DISTANCE
+            lat += self.region_lat_len * self.TRANSLATION_RELATIVE_DISTANCE
             if (lat + self.region_lat_len) > LAT_MAX:
                 lat = LAT_MIN
-                lng += self.region_lng_len * TRANSLATION_RELATIVE_DISTANCE
+                lng += self.region_lng_len * self.TRANSLATION_RELATIVE_DISTANCE
 
         while lng < LNG_MAX:
             # Get region
             region = load_region(lng, lat, self.region_lng_len, self.region_lat_len, output_shape=self.shape)
 
             # Filters
-            if FILTER_ENABLED:
+            if self.FILTER_ENABLED:
                 var = np.var(region)
                 landmass = np.mean(region > 0)
 
-                if var < FILTER_MIN_VAR or landmass < FILTER_MIN_LANDMASS:
+                if var < self.FILTER_MIN_VAR or landmass < self.FILTER_MIN_LANDMASS:
                     increment()
                     continue
 
@@ -93,11 +93,14 @@ class DataLoader:
             data_sequence.append(region)
 
             # Add augmented versions
-            if AUGMENT_LNG_FLIP:
+            if self.AUGMENT_LNG_FLIP:
                 augmented = np.flip(region, axis=0)
                 data_sequence.append(augmented)
-            if AUGMENT_LAT_FLIP:
+            if self.AUGMENT_LAT_FLIP:
                 augmented = np.flip(region, axis=1)
+                data_sequence.append(augmented)
+            if self.AUGMENT_LNG_FLIP and self.AUGMENT_LAT_FLIP:
+                augmented = np.flip(np.flip(region, axis=0), axis=1)
                 data_sequence.append(augmented)
 
             # Increment

@@ -16,7 +16,7 @@ class DeepFillHandler(ModelHandlerBase):
         self.DISCRIMINATOR_TRAINING_MULTIPLIER = 1
         self.GEN_RECON_RELATIVE_LOSS_WEIGHT = 1
         self.GEN_GAN_RELATIVE_LOSS_WEIGHT = 1
-        self.MASK_TYPE = "CENTER"
+        self.MASK_TYPE = "fixed_inner_square"
         
         # State variables - updated over each epoch
         self.epoch_size = 0
@@ -50,6 +50,19 @@ class DeepFillHandler(ModelHandlerBase):
             self.epoch_disc_loss / self.epoch_size
         )
         return message
+
+    def summary(self):
+        out = []
+
+        out += ["", "Generator:"]
+        out += [f"Parameter Count = {sum(p for p in self.gen.parameters() if p.requires_grad)}"]
+        out += [str(self.gen)]
+
+        out += ["", "Discriminator:"]
+        out += [f"Parameter Count = {sum(p for p in self.gen.parameters() if p.requires_grad)}"]
+        out += [str(self.disc)]
+
+        return "\n".join(out)
 
     def train_minibatch(self, minibatch):
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
@@ -148,27 +161,24 @@ class DeepFillHandler(ModelHandlerBase):
 
 
 
-    # Private Helper Functions
-    def discriminator_loss_fn(self, x, mask):
-        masked_input = torch.cat([x * mask, mask], dims=1)
-        generated = self.gen(masked_input)
-        unmasked_input = torch.cat([x, mask], dims=1)
-        unmasked_generated = torch.cat([generated, mask], dims=1)
+    # --- Private Helper Functions ---
+    def discriminator_loss_fn(self, img, mask):
+        generated = self.gen(img, mask)
 
-        disc_loss = (torch.sum(-torch.log(self.disc(unmasked_input))) + torch.sum(-torch.log(1 - self.disc(unmasked_generated)))) / 2
+        disc_loss = (torch.sum(-torch.log(self.disc(img, mask))) + torch.sum(-torch.log(1 - self.disc(generated, mask)))) / 2
+        
         return disc_loss
 
-    def generator_loss_fn(self, x, mask):
-        masked_input = torch.cat([x * mask, mask], dims=1)
-        generated = self.gen(masked_input)
-        unmasked_generated = torch.cat([generated, mask], dims=1)
+    def generator_loss_fn(self, img, mask):
+        generated = self.gen(img, mask)
 
-        recon_loss = self.GEN_RECON_RELATIVE_LOSS_WEIGHT * torch.sum(torch.mean((x - generated).pow(2) / 2), axis=(1, 2, 3))
-        gan_loss = self.GEN_GAN_RELATIVE_LOSS_WEIGHT * -torch.sum(torch.log(self.disc(unmasked_generated)))
+        recon_loss = self.GEN_RECON_RELATIVE_LOSS_WEIGHT * torch.sum(torch.mean((img - generated).pow(2) / 2), axis=(1, 2, 3))
+        gan_loss = self.GEN_GAN_RELATIVE_LOSS_WEIGHT * -torch.sum(torch.log(self.disc(img, mask)))
+        
         return recon_loss, gan_loss
 
     def create_mask(self, batch_size):
-        if self.MASK_TYPE == "center":
+        if self.MASK_TYPE == "fixed_inner_square":
             quarter_len_x, quarter_len_y = self.img_dims[0] // 4, self.img_dims[1] // 4
 
             mask = torch.zeros((batch_size, 1, *self.img_dims))

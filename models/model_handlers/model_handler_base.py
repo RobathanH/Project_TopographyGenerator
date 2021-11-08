@@ -66,3 +66,7 @@ class ModelHandlerBase:
     # Triggers short status message about current average loss
     def status(self):
         raise NotImplementedError
+
+    # Returns summaries and param-counts for all contained models
+    def summary(self):
+        raise NotImplementedError

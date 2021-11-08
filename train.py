@@ -19,8 +19,12 @@ MID_EPOCH_LOG_PERIOD = 10 * 60 # Time in seconds between mid-epoch logs
 
 
 
-def train(model_name, epochs=20):
+def train(model_name, epochs=20, print_model_summary=True):
     model, dataloader = models.model_registry.get_model(model_name)
+
+    # Print model summary
+    if print_model_summary:
+        print(model.summary())
 
     # Load weights from any previous run
     model.load_weights()

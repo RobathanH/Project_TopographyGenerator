@@ -45,5 +45,14 @@ def get_model(name):
         dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
         return model, dataloader
 
+    if name == "deepfill_1":
+        import models.architectures.deepfill as m
+        model = DeepFillHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.SingleBranchGenerator(), m.SnPatchGanDiscriminator())
+
+        dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
+        dataloader.FILTER_ENABLED = True
+        
+        return model, dataloader
+
 
     raise ValueError(f"Unrecognized Name: {name}")
