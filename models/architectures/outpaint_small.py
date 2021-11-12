@@ -4,8 +4,8 @@ import torch.nn as nn
 
 
 from ..outpaint_blocks import *
-from normalizers import Normalizer
-from activations import Activation
+from ..normalizers import Normalizer
+from ..activations import Activation
 from ..util import *
 
 IMG_DIMS = (64, 64)
@@ -67,7 +67,7 @@ class Generator(nn.Module):
             BottleneckResblock(
                 256, 64, 256, kernel_size=3, stride=1, **dec_norm_act
             ),
-            nn.Conv2dTranspose(
+            nn.ConvTranspose2d(
                 in_channels=256, out_channels=128,
                 kernel_size=4, stride=2, padding=1
             ),
@@ -81,7 +81,7 @@ class Generator(nn.Module):
             BottleneckResblock(
                 128, 32, 128, kernel_size=3, stride=1, **dec_norm_act
             ),
-            nn.Conv2dTranspose(
+            nn.ConvTranspose2d(
                 in_channels=128, out_channels=64,
                 kernel_size=4, stride=2, padding=1
             ),
@@ -95,7 +95,7 @@ class Generator(nn.Module):
             BottleneckResblock(
                 64, 32, 64, kernel_size=3, stride=1, **dec_norm_act
             ),
-            nn.Conv2dTranspose(
+            nn.ConvTranspose2d(
                 in_channels=64, out_channels=32,
                 kernel_size=4, stride=2, padding=1
             ),
@@ -105,7 +105,7 @@ class Generator(nn.Module):
 
         # Stage -1: 32 -> 64
         self.decoder_1 = nn.Sequential(
-            nn.Conv2dTranspose(
+            nn.ConvTranspose2d(
                 in_channels=32, out_channels=1,
                 kernel_size=4, stride=2, padding=1
             )
@@ -142,22 +142,22 @@ class SnPatchGanDiscriminator(nn.Module):
         self.layers = nn.Sequential(
             SpectralNorm(nn.Conv2d(
                 in_channels=1, out_channels=cnum,
-                kernel=5, stride=2, padding=2
+                kernel_size=5, stride=2, padding=2
             )),
             activation.create_layer(),
             SpectralNorm(nn.Conv2d(
                 in_channels=cnum, out_channels=cnum * 2,
-                kernel=5, stride=2, padding=2
+                kernel_size=5, stride=2, padding=2
             )),
             activation.create_layer(),
             SpectralNorm(nn.Conv2d(
                 in_channels=cnum * 2, out_channels=cnum * 2,
-                kernel=5, stride=2, padding=2
+                kernel_size=5, stride=2, padding=2
             )),
             activation.create_layer(),
             SpectralNorm(nn.Conv2d(
                 in_channels=cnum * 2, out_channels=cnum * 2,
-                kernel=5, stride=2, padding=2
+                kernel_size=5, stride=2, padding=2
             )),
             activation.create_layer(),
             nn.Flatten()

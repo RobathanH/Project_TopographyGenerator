@@ -161,7 +161,7 @@ class SkipHorizontalConnection(nn.Module):
             normalizer.create_layer(channels)
         )
 
-        self.final_norm = normalizer.create_layer()
+        self.final_norm = normalizer.create_layer(channels)
         self.final_activation = activation.create_layer()
 
     '''

@@ -1,6 +1,7 @@
 from data.assemble_dataset import DataLoader
 from .model_handlers.vae_gan_handler import *
 from .model_handlers.deep_fill_handler import *
+from .model_handlers.outpaint_handler import *
 from .util import *
 
 
@@ -54,5 +55,13 @@ def get_model(name):
         
         return model, dataloader
 
+    if name == "outpaint_small_1":
+        import models.architectures.outpaint_small as m
+        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(), m.SnPatchGanDiscriminator(), m.SnPatchGanDiscriminator())
+
+        dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
+        dataloader.FILTER_ENABLED = True
+
+        return model, dataloader
 
     raise ValueError(f"Unrecognized Name: {name}")
