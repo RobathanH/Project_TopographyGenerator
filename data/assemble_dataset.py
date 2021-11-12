@@ -62,7 +62,7 @@ class DataLoader:
         lng = LNG_MIN
         lat = LAT_MIN
 
-        lat_iterations = (LAT_MAX - LAT_MIN - self.region_lat_len) / (self.region_lat_len * TRANSLATION_RELATIVE_DISTANCE) + 1
+        lat_iterations = (LAT_MAX - LAT_MIN - self.region_lat_len) / (self.region_lat_len * self.TRANSLATION_RELATIVE_DISTANCE) + 1
         lng_iterations = (LNG_MAX - LNG_MIN) / (self.region_lng_len * self.TRANSLATION_RELATIVE_DISTANCE)
         total_iterations = lng_iterations * lat_iterations
         pbar = tqdm.tqdm(total=total_iterations, desc="Loading regions into compiled dataset")
@@ -71,6 +71,7 @@ class DataLoader:
         def increment():
             nonlocal lng, lat
             pbar.update(1)
+            pbar.set_description(f"Loading regions into compiled dataset ({len(data_sequence)} so far)")
             lat += self.region_lat_len * self.TRANSLATION_RELATIVE_DISTANCE
             if (lat + self.region_lat_len) > LAT_MAX:
                 lat = LAT_MIN

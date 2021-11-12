@@ -2,6 +2,7 @@ from typing import List, Tuple
 
 import torch
 import torch.nn as nn
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 from models.activations import Activation
@@ -86,7 +87,7 @@ class GlobalResidualBlock(nn.Module):
     def __init__(self, channels: int, kernel_shape: Tuple[int, int], dilation: int = 1, normalizer: Normalizer = Normalizer.NONE, activation: Activation = Activation.NONE):
         super(GlobalResidualBlock, self).__init__()
 
-        padding_shape = (kernel_shape[0] - 1) // 2, (kernel_shape[1] - 1) // 2
+        padding_shape = dilation * (kernel_shape[0] - 1) // 2, dilation * (kernel_shape[1] - 1) // 2
 
         self.branch_xy = nn.Sequential(
             nn.Conv2d(
@@ -170,7 +171,7 @@ class SkipHorizontalConnection(nn.Module):
         shortcut:   The partially encoded features from the source image
     '''
     def forward(self, x, shortcut):
-        left_x, right_x = torch.split(x, 2, dim=2)
+        left_x, right_x = torch.tensor_split(x, 2, dim=2)
         combined_features = torch.cat([left_x, shortcut], dim=1)
         processed = self.layers(combined_features)
         processed = shortcut + processed
@@ -225,24 +226,25 @@ class RecurrentContentTransfer(nn.Module):
     def forward(self, x):
         # Reduce channel count into bottleneck
         bottlenecked = self.bottleneck_in(x) # N, C, W, H
+        N, C, W, H = bottlenecked.shape
 
         # Rearrange into lstm format
         reordered_in = bottlenecked.permute(0, 2, 3, 1) # N, W, H, C
-        flattened_in = torch.flatten(reordered_in, start_dim=-2, end_dim=-1) # N, W, H*C
+        flattened_in = reordered_in.reshape(N, W, -1) # N, W, H*C
         sequenced_in = flattened_in.permute(1, 0, 2) # W, N, H*C
 
         # Pass through LSTM
-        out, h, c = self.lstm(sequenced_in)
-        sequenced_out = torch.zeros(self.input_width, x.shape[0], self.lstm_features) # W, N, H*C
+        out, (h, c) = self.lstm(sequenced_in)
+        sequenced_out = torch.zeros(self.input_width, x.shape[0], self.lstm_features).to(DEVICE) # W, N, H*C
         sequenced_out[0] = out[-1]
         for step in range(1, self.input_width):
-            out, h, c = self.lstm(out[-1:], h, c)
+            out, (h, c) = self.lstm(out[-1:], (h, c))
             sequenced_out[step] = out[-1]
 
         # Rearrange for conv layers
         flattened_out = sequenced_out.permute(1, 0, 2) # N, W, H*C
-        reordered_out = torch.tensor(torch.split(flattened_out, self.input_width, dim=-1)) # H, N, W, C
-        bottlenecked_out = reordered_out.permute(1, 3, 2, 0) # N, C, W, H
+        reordered_out = flattened_out.reshape(N, W, H, C) # N, W, H, C
+        bottlenecked_out = reordered_out.permute(0, 3, 1, 2) # N, C, W, H
         
         # Increase channel count out of bottleneck
         out = self.bottleneck_out(bottlenecked_out)

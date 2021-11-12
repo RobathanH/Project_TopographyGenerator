@@ -49,8 +49,10 @@ def train(model_name, epochs=20, print_model_summary=True):
         np.random.shuffle(train_data)
 
         batch_start = 0
-        pbar = tqdm.tqdm(total=train_data.shape[0], leave=False)
-        while batch_start < train_data.shape[0]:
+        pbar = tqdm.tqdm(total=(train_data.shape[0] // BATCH_SIZE) * BATCH_SIZE, leave=False)
+
+        # Leave out final incomplete batch
+        while batch_start + BATCH_SIZE < train_data.shape[0]:
             # Collect minibatch data
             current_minibatch_size = min(BATCH_SIZE, train_data.shape[0] - batch_start)
             minibatch = train_data[batch_start : batch_start + current_minibatch_size]
@@ -72,7 +74,7 @@ def train(model_name, epochs=20, print_model_summary=True):
         model.save_weights()
 
         # Validate at the end of the epoch
-        model.log_metrics(epoch, val_data)
+        model.log_metrics(epoch + 1, val_data)
 
 
 

@@ -108,6 +108,9 @@ def save_dataset():
             #   west -> east = axis 0 low to high
             #   south -> north = axis 1 low to high
             img = np.transpose(np.flip(img, axis=0))
+
+            # Rescale img pixels to km
+            img /= 1000
             
             # Save img to coord-labeled file
             np.save(data_savename(lng, lat, create_folder=True), img)

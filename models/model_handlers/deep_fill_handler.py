@@ -5,12 +5,12 @@ class DeepFillHandler(ModelHandlerBase):
         super(DeepFillHandler, self).__init__(name, img_dims, region_dims)
 
         # Networks
-        self.gen = generator
-        self.disc = discriminator
+        self.gen = generator.to(DEVICE)
+        self.disc = discriminator.to(DEVICE)
 
         # Optimizers
-        self.gen = torch.optim.Adam(self.gen.parameters())
-        self.disc = torch.optim.Adam(self.disc.parameters())
+        self.gen_opt = torch.optim.Adam(self.gen.parameters())
+        self.disc_opt = torch.optim.Adam(self.disc.parameters())
 
         # Training Constants
         self.DISCRIMINATOR_TRAINING_MULTIPLIER = 1
@@ -25,7 +25,10 @@ class DeepFillHandler(ModelHandlerBase):
         self.epoch_gen_gan_loss = 0
         self.epoch_disc_loss = 0
 
-    def load_Weights(self):
+        # Logging count - allows mid-epoch tensorboard logging
+        self.log_step = 0
+
+    def load_weights(self):
         for prev_it in range(1, self.iteration)[::-1]:
             gen_savepath = os.path.join(self.log_folder(prev_it), "gen_weights.pth")
             disc_savepath = os.path.join(self.log_folder(prev_it), "disc_weights.pth")
@@ -55,16 +58,18 @@ class DeepFillHandler(ModelHandlerBase):
         out = []
 
         out += ["", "Generator:"]
-        out += [f"Parameter Count = {sum(p for p in self.gen.parameters() if p.requires_grad)}"]
+        out += [f"Parameter Count = {sum(np.prod(p.size()) for p in self.gen.parameters() if p.requires_grad)}"]
         out += [str(self.gen)]
 
         out += ["", "Discriminator:"]
-        out += [f"Parameter Count = {sum(p for p in self.gen.parameters() if p.requires_grad)}"]
+        out += [f"Parameter Count = {sum(np.prod(p.size()) for p in self.disc.parameters() if p.requires_grad)}"]
         out += [str(self.disc)]
 
         return "\n".join(out)
 
     def train_minibatch(self, minibatch):
+        super(DeepFillHandler, self).train_minibatch(minibatch)
+
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
         x = torch.tensor(minibatch).to(DEVICE)
 
@@ -101,24 +106,25 @@ class DeepFillHandler(ModelHandlerBase):
         total_val_disc_loss = 0
 
         batch_start = 0
-        while batch_start < val_data.shape[0]:
-            batch_size = min(VAL_BATCH_SIZE, val_data.shape[0] - batch_start)
-            val_batch = val_data[batch_start : batch_start + batch_size]
-            x = torch.tensor(val_batch.reshape(val_batch.shape[:1] + (1,) + val_batch[1:])).to(DEVICE)
-            
-            # Add masks
-            mask = self.mask(batch_size)
+        with torch.no_grad():
+            while batch_start < val_data.shape[0]:
+                batch_size = min(VAL_BATCH_SIZE, val_data.shape[0] - batch_start)
+                val_batch = val_data[batch_start : batch_start + batch_size]
+                x = torch.tensor(val_batch.reshape(val_batch.shape[:1] + (1,) + val_batch.shape[1:])).to(DEVICE)
+                
+                # Add masks
+                mask = self.create_mask(batch_size)
 
-            disc_loss = self.discriminator_loss_fn(x, mask)
-            gen_recon_loss, gen_gan_loss = self.generator_loss_fn(x, mask)
-            gen_loss = gen_recon_loss + gen_gan_loss
+                disc_loss = self.discriminator_loss_fn(x, mask)
+                gen_recon_loss, gen_gan_loss = self.generator_loss_fn(x, mask)
+                gen_loss = gen_recon_loss + gen_gan_loss
 
-            total_val_gen_loss += gen_loss.item()
-            total_val_gen_recon_loss += gen_recon_loss.item()
-            total_val_gen_gan_loss += gen_gan_loss.item()
-            total_val_disc_loss += disc_loss.item()
+                total_val_gen_loss += gen_loss.item()
+                total_val_gen_recon_loss += gen_recon_loss.item()
+                total_val_gen_gan_loss += gen_gan_loss.item()
+                total_val_disc_loss += disc_loss.item()
 
-            batch_start += VAL_BATCH_SIZE
+                batch_start += VAL_BATCH_SIZE
 
         val_gen_loss = total_val_gen_loss / val_data.shape[0]
         val_gen_recon_loss = total_val_gen_recon_loss / val_data.shape[0]
@@ -126,26 +132,34 @@ class DeepFillHandler(ModelHandlerBase):
         val_disc_loss = total_val_disc_loss / val_data.shape[0]
 
         # Log val loss
-        self.writer.add_scalar("eval/gen_loss", val_gen_loss, epoch_idx)
-        self.writer.add_scalar("eval/gen_recon_loss", val_gen_recon_loss, epoch_idx)
-        self.writer.add_scalar("eval/gen_gan_loss", val_gen_gan_loss, epoch_idx)
-        self.writer.add_scalar("eval/disc_loss", val_disc_loss, epoch_idx)
+        self.writer.add_scalar("eval/gen_loss", val_gen_loss, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("eval/gen_recon_loss", val_gen_recon_loss, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("eval/gen_gan_loss", val_gen_gan_loss, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("eval/disc_loss", val_disc_loss, self.log_step)#, epoch_idx)
 
         # Log train loss
-        self.writer.add_scalar("train/gen_loss", self.epoch_gen_loss / self.epoch_size, epoch_idx)
-        self.writer.add_scalar("train/gen_recon_loss", self.epoch_gen_recon_loss / self.epoch_size, epoch_idx)
-        self.writer.add_scalar("train/gen_gan_loss", self.epoch_gen_gan_loss / self.epoch_size, epoch_idx)
-        self.writer.add_scalar("train/disc_loss", self.epoch_disc_loss / self.epoch_size, epoch_idx)
+        self.writer.add_scalar("train/gen_loss", self.epoch_gen_loss / self.epoch_size, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("train/gen_recon_loss", self.epoch_gen_recon_loss / self.epoch_size, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("train/gen_gan_loss", self.epoch_gen_gan_loss / self.epoch_size, self.log_step)#, epoch_idx)
+        self.writer.add_scalar("train/disc_loss", self.epoch_disc_loss / self.epoch_size, self.log_step)#, epoch_idx)
+
+        # Increment log step
+        self.log_step += 1
 
         # Save some examples from the val_data
-        epoch_name = f"epoch{round(epoch_idx, 2)}"
-        rand_inds = np.random.choice(np.arange(val_data.shape[0]), 20)
+        epoch_name = f"epoch_{epoch_idx:.2f}"
+        rand_inds = np.random.choice(np.arange(val_data.shape[0]), 20, replace=False)
         example_imgs = val_data[rand_inds]
-        net_input = torch.tensor(example_imgs.reshape(example_imgs.shape[:1] + (1,) + example_imgs.shape[1:])).to(DEVICE)
-        net_output, _, _ = self.vae(net_input)
-        example_reconstructions = net_output.detach().cpu().numpy().reshape(example_imgs.shape)
-        data.util.save_images2(example_imgs, example_reconstructions, main_title=f"{self.name}_{epoch_name}",
-                                title1="Original", title2="Reconstruction", filename=os.path.join(self.log_folder(), f"{epoch_name}.png"))
+
+        with torch.no_grad():
+            example_inputs = torch.tensor(example_imgs.reshape(example_imgs.shape[:1] + (1,) + example_imgs.shape[1:])).to(DEVICE)
+            example_masks = self.create_mask(example_imgs.shape[0])
+            _, final_output = self.gen(example_inputs, example_masks)
+            example_reconstructions = final_output.detach().cpu().numpy().reshape(example_imgs.shape)
+            example_masked_imgs = ((1 - example_masks) * example_inputs + example_masks * 1.1 * torch.max(torch.abs(example_inputs))).detach().cpu().numpy().reshape(example_imgs.shape)
+
+        data.util.save_image_lists([example_imgs, example_masked_imgs, example_reconstructions], ["Original", "Masked", "Reconstruction"],
+                                    main_title=f"{self.name}_{epoch_name}", filename=os.path.join(self.log_folder(), f"{epoch_name}.png"))
 
         # Reset train loss vars
         if epoch_complete:
@@ -172,8 +186,8 @@ class DeepFillHandler(ModelHandlerBase):
         # Only use generator output within masked space for discriminator
         patched_generated = refined_generated * mask + img * (1 - mask)
 
-        pos_hinge_loss = torch.mean(torch.relu(1 - self.disc(img, mask)), axis=(1, 2, 3))
-        neg_hinge_loss = torch.mean(torch.relu(1 + self.disc(patched_generated, mask)), axis=(1, 2, 3))
+        pos_hinge_loss = torch.mean(torch.relu(1 - self.disc(img, mask)), dim=1)
+        neg_hinge_loss = torch.mean(torch.relu(1 + self.disc(patched_generated, mask)), dim=1)
 
 
         disc_loss = torch.sum(
@@ -194,10 +208,10 @@ class DeepFillHandler(ModelHandlerBase):
         patched_generated = refined_generated * mask + img * (1 - mask)
 
         recon_loss = self.GEN_RECON_RELATIVE_LOSS_WEIGHT * torch.sum(
-            torch.mean(torch.abs(img - coarse_generated) + torch.abs(img - refined_generated), axis=(1, 2, 3))
+            torch.mean(torch.abs(img - coarse_generated) + torch.abs(img - refined_generated), dim=(1, 2, 3))
         )
         gan_loss = self.GEN_GAN_RELATIVE_LOSS_WEIGHT * torch.sum(
-            -torch.mean(self.disc(patched_generated, mask), axis=(1, 2, 3))
+            -torch.mean(self.disc(patched_generated, mask), dim=1)
         )
         
         return recon_loss, gan_loss
@@ -206,7 +220,17 @@ class DeepFillHandler(ModelHandlerBase):
         if self.MASK_TYPE == "fixed_inner_square":
             quarter_len_x, quarter_len_y = self.img_dims[0] // 4, self.img_dims[1] // 4
 
-            mask = torch.zeros((batch_size, 1, *self.img_dims))
-            mask[:, :, quarter_len_x : 3 * quarter_len_x, quarter_len_y : 3 * quarter_len_y] = torch.ones((batch_size, 1, 2 * quarter_len_x, 2 * quarter_len_y))
-            mask = mask.to(DEVICE)
+            mask = torch.zeros((batch_size, 1, *self.img_dims), device=DEVICE)
+            mask[:, :, quarter_len_x : 3 * quarter_len_x, quarter_len_y : 3 * quarter_len_y] = torch.ones((batch_size, 1, 2 * quarter_len_x, 2 * quarter_len_y), device=DEVICE)
+            return mask
+
+        if self.MASK_TYPE == "shifting_inner_square":
+            quarter_len_x, quarter_len_y = self.img_dims[0] // 4, self.img_dims[1] // 4
+
+            x_mask_start = np.random.choice(range(2 * quarter_len_x), batch_size)
+            y_mask_start = np.random.choice(range(2 * quarter_len_y), batch_size)
+
+            mask = torch.zeros((batch_size, 1, *self.img_dims), device=DEVICE)
+            for i in range(batch_size):
+                mask[i, :, x_mask_start[i] : x_mask_start[i] + 2 * quarter_len_x, y_mask_start[i] : y_mask_start[i] + 2 * quarter_len_y] = torch.ones((1, 2 * quarter_len_x, 2 * quarter_len_y), device=DEVICE)
             return mask

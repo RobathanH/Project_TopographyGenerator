@@ -141,19 +141,43 @@ class StyleGanBlock(nn.Module):
 
 
 class GatedConv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, activation=nn.ELU()):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, normalization=None, activation=None):
+        super(GatedConv2d, self).__init__()
+
         padding = dilation * (kernel_size - 1) // 2
 
         self.conv = nn.Conv2d(
-            in_channels=in_channels, out_channels=2 * out_channels,
+            in_channels=in_channels, out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation
         )
-        self.activation = activation
+        self.mask = nn.Conv2d(
+            in_channels=in_channels, out_channels=out_channels,
+            kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation
+        )
+
+        if normalization is None:
+            self.normalization = None
+        elif normalization == "in":
+            self.normalization = nn.InstanceNorm2d(out_channels, affine=True)
+        else:
+            raise NotImplementedError(f"Unrecognized normalization argument: {normalization}")
+
+        if activation is None:
+            self.activation = None
+        elif activation == "relu":
+            self.activation = nn.ReLU(inplace=True)
+        elif activation == "lrelu":
+            self.activation == nn.LeakyReLU(inplace=True)
+        elif activation == "elu":
+            self.activation = nn.ELU(inplace=True)
 
     def forward(self, x):
-        x = self.conv(x)
-        x, m = x[:, :self.out_channels], x[:, self.out_channels:]
-        m = torch.sigmoid(m)
+        out = self.conv(x) * torch.sigmoid(self.mask(x))
+
+        if self.normalization is not None:
+            out = self.normalization(out)
+
         if self.activation is not None:
-            x = self.activation(x)
-        return x * m
+            out = self.activation(out)
+
+        return out

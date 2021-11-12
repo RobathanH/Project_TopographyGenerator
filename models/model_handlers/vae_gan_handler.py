@@ -57,16 +57,18 @@ class VaeGanHandler(ModelHandlerBase):
         out = []
 
         out += ["", "VAE:"]
-        out += [f"Parameter Count = {sum(p for p in self.vae.parameters() if p.requires_grad)}"]
+        out += [f"Parameter Count = {sum(np.prod(p.size()) for p in self.vae.parameters() if p.requires_grad)}"]
         out += [str(self.vae)]
 
         out += ["", "Discriminator:"]
-        out += [f"Parameter Count = {sum(p for p in self.discriminator.parameters() if p.requires_grad)}"]
+        out += [f"Parameter Count = {sum(np.prod(p.size()) for p in self.discriminator.parameters() if p.requires_grad)}"]
         out += [str(self.discriminator)]
 
         return "\n".join(out)
 
     def train_minibatch(self, minibatch):
+        super(VaeGanHandler, self).train_minibatch(minibatch)
+        
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
         x = torch.tensor(minibatch).to(DEVICE)
 

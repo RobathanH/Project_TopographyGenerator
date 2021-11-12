@@ -8,8 +8,8 @@ from ..normalizers import Normalizer
 from ..activations import Activation
 from ..util import *
 
-IMG_DIMS = (64, 64)
-REGION_DIMS = (20, 20)
+IMG_DIMS = (128, 64)
+REGION_DIMS = (40, 20)
 
 class Generator(nn.Module):
     def __init__(self):

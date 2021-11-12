@@ -14,9 +14,9 @@ correspond to magnitude zero in the data (water level)
 def fixed_zero_imshow(img, ax=None):
     max_mag = np.max(np.abs(img))
     if ax is None:
-        plt.imshow(img, vmin=-max_mag, vmax=max_mag, cmap='coolwarm')
+        plt.imshow(img.T, vmin=-max_mag, vmax=max_mag, cmap='coolwarm', origin='lower')
     else:
-        ax.imshow(img, vmin=-max_mag, vmax=max_mag, cmap='coolwarm')
+        ax.imshow(img.T, vmin=-max_mag, vmax=max_mag, cmap='coolwarm', origin='lower')
 
 '''
 Plots and saves a list of images
@@ -46,6 +46,25 @@ def save_images2(imgs1, imgs2, main_title=None, title1=None, title2=None, filena
             axarr[i][0].title.set_text(title1)
         if title2 is not None:
             axarr[i][1].title.set_text(title2)
+
+    if main_title is not None:
+        fig.suptitle(main_title)
+
+    plt.show()
+    plt.savefig(filename)
+
+'''
+
+'''
+def save_image_lists(imgs, titles, main_title=None, filename="temp.png"):
+    column_count = min(len(imgs), len(titles))
+    row_count = min(*[len(i) for i in imgs])
+    fig, axarr = plt.subplots(row_count, column_count, figsize=(4 * column_count, 3 * row_count), constrained_layout=True)
+
+    for i in range(row_count):
+        for j in range(column_count):
+            fixed_zero_imshow(imgs[j][i], axarr[i][j])
+            axarr[i][j].title.set_text(titles[j])
 
     if main_title is not None:
         fig.suptitle(main_title)

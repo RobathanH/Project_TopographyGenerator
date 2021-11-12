@@ -34,12 +34,12 @@ class ModelHandlerBase:
         
         self.iteration = prev_iteration + 1
 
-        self.writer = tensorboard.SummaryWriter(log_dir=self.log_folder())
+        self.writer = None
 
 
     def model_folder(self):
         script_folder = os.path.dirname(os.path.realpath(__file__))
-        return os.path.join(script_folder, LOG_FOLDER, self.name)
+        return os.path.join(script_folder, "..", LOG_FOLDER, self.name)
 
     def log_folder(self, iteration=None):
         if iteration is None:
@@ -57,7 +57,8 @@ class ModelHandlerBase:
         minibatch (np.ndarray): shape = (batch_size,) + img_dims
     '''
     def train_minibatch(self, minibatch):
-        raise NotImplementedError
+        if self.writer is None:
+            self.writer = tensorboard.SummaryWriter(log_dir=self.log_folder())
 
     # Triggers resetting epoch average loss vars, and writing to tensorboard
     def epoch_complete(self, epoch_idx, val_data):
