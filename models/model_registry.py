@@ -92,13 +92,53 @@ def get_model(name):
         return model, dataloader
 
     if name == "outpaint_small_1":
+        # Extra conv layer at the end to smooth results
         import models.architectures.outpaint_small as m
-        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(), m.SnPatchGanDiscriminator(), m.SnPatchGanDiscriminator())
+        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(add_final_conv=True), m.SnPatchGanDiscriminator(), m.SnPatchGanDiscriminator())
 
         dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
         dataloader.FILTER_ENABLED = True
 
         return model, dataloader
 
+    if name == "outpaint_large_1":
+        # Deeper copy of outpaint, exactly matching implementation
+        # Works on 128x128 images, rather than 64x64 in outpaint_small
+        # Has many more resblocks
+        # RESULT: >119 million params, takes too long to run, runs out of mem on val if disc grad penalty enabled
+        import models.architectures.outpaint_large as m
+        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(), m.Discriminator(local=True), m.Discriminator(local=False), weight_decay=0.00002)
+
+        dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
+        dataloader.FILTER_ENABLED = True
+
+        return model, dataloader
+
+    if name == "outpaint_large_2":
+        # Smaller channel count
+        # Extra conv layer at the end to smooth results
+        import models.architectures.outpaint_large as m
+        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(latent_channels=256, add_final_conv=True), m.Discriminator(local=True, latent_channels=128), m.Discriminator(local=False, latent_channels=128), weight_decay=0.00002)
+        model.DISCRIMINATOR_TRAINING_MULTIPLIER = 3
+        model.DISCRIMINATOR_LOSS = "unbounded"
+        model.DISCRIMINATOR_REGULARIZER = "grad"
+
+        dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
+        dataloader.FILTER_ENABLED = True
+
+        return model, dataloader
+
+    if name == "outpaint_large_3":
+        # Same as outpaint_large_2 but using nearest-neighbor upsampling instead of convtranspose layers
+        import models.architectures.outpaint_large as m
+        model = OutPaintHandler(name, m.IMG_DIMS, m.REGION_DIMS, m.Generator(latent_channels=256, add_final_conv=True, upsampling_type="nn_upsample"), m.Discriminator(local=True, latent_channels=128), m.Discriminator(local=False, latent_channels=128), weight_decay=0.00002)
+        model.DISCRIMINATOR_TRAINING_MULTIPLIER = 3
+        model.DISCRIMINATOR_LOSS = "unbounded"
+        model.DISCRIMINATOR_REGULARIZER = "grad"
+
+        dataloader = DataLoader(m.IMG_DIMS, m.REGION_DIMS)
+        dataloader.FILTER_ENABLED = True
+
+        return model, dataloader
 
     raise ValueError(f"Unrecognized Name: {name}")

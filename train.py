@@ -19,7 +19,7 @@ MID_EPOCH_LOG_PERIOD = 10 * 60 # Time in seconds between mid-epoch logs
 
 
 
-def train(model_name, epochs=20, print_model_summary=True):
+def train(model_name, epochs=50, print_model_summary=True):
     model, dataloader = models.model_registry.get_model(model_name)
 
     # Print model summary
@@ -35,7 +35,7 @@ def train(model_name, epochs=20, print_model_summary=True):
     np.random.shuffle(data)
 
     # Split data
-    val_size = min(int(0.1 * data.shape[0]), 1000)
+    val_size = min(int(0.1 * data.shape[0]), 200)
     train_data = data[val_size:]
     val_data = data[:val_size]
 
