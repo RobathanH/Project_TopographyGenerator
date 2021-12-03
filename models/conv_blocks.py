@@ -1,5 +1,8 @@
+from typing import Tuple
 import torch
 import torch.nn as nn
+
+from .activations import Activation
 
 # Constants
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -71,7 +74,16 @@ class ResBlock(nn.Module):
 
 
 class NoisyAdaIn(nn.Module):
-    def __init__(self, input_shape, channels, latent_channels):
+    '''
+    Args:
+        input_shape ((int, int))
+        channels (int)
+        latent_channels (int)
+        kernel_size (int)
+        id_init (bool):             Whether to initialize all layers with constants such that initial operation is identity transform
+        activation (Activation):    Activation function to use
+    '''
+    def __init__(self, input_shape: Tuple[int, int], channels: int, latent_channels: int, kernel_size: int = 5, id_init: bool = False, activation: Activation = Activation.TANH) -> None:
         super(NoisyAdaIn, self).__init__()
 
         self.input_shape = input_shape
@@ -80,12 +92,21 @@ class NoisyAdaIn(nn.Module):
         self.noise_scale = nn.Parameter(torch.randn(1, channels, 1, 1))
         self.to_mean = nn.Conv2d(
             in_channels=latent_channels, out_channels=channels,
-            kernel_size=5, stride=1, padding=2
+            kernel_size=kernel_size, stride=1, padding=2
         )
         self.to_scale = nn.Conv2d(
             in_channels=latent_channels, out_channels=channels,
-            kernel_size=5, stride=1, padding=2
+            kernel_size=kernel_size, stride=1, padding=2
         )
+        self.activation = activation.create_layer()
+
+        # Force constant initialization
+        if id_init:
+            nn.init.constant_(self.noise_scale, 0)
+            nn.init.constant_(self.to_mean.weight, 0)
+            nn.init.constant_(self.to_mean.bias, 0)
+            nn.init.constant_(self.to_scale.weight, 0)
+            nn.init.constant_(self.to_scale.bias, 1)
 
     def forward(self, x):
         # Unpack inputs
@@ -105,7 +126,7 @@ class NoisyAdaIn(nn.Module):
         x = mean + scale * x
 
         # Nonlinearity
-        x = nn.Tanh()(x)
+        x = self.activation(x)
 
         return x, z
 

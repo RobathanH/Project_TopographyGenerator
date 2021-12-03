@@ -3,6 +3,7 @@ import numpy as np
 import tqdm
 import sys
 import time
+import argparse
 
 import torch
 import torch.nn as nn
@@ -14,12 +15,11 @@ from data.assemble_dataset import DataLoader
 
 # Constants
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-BATCH_SIZE = 32
 MID_EPOCH_LOG_PERIOD = 10 * 60 # Time in seconds between mid-epoch logs
 
 
 
-def train(model_name, epochs=50, print_model_summary=True):
+def train(model_name, epochs=50, print_model_summary = True):
     model, dataloader = models.model_registry.get_model(model_name)
 
     # Print model summary
@@ -39,6 +39,12 @@ def train(model_name, epochs=50, print_model_summary=True):
     train_data = data[val_size:]
     val_data = data[:val_size]
 
+    # Log initial performance before training
+    model.log_metrics(0, val_data, epoch_complete=False)
+
+    # Set batch size from model
+    batch_size = model.batch_size
+
     # Begin training epochs
     print(f"\n\nTraining {model.name} (run {model.iteration})")
     for epoch in tqdm.trange(epochs, desc=f"{epochs} Training Epochs"):
@@ -49,12 +55,12 @@ def train(model_name, epochs=50, print_model_summary=True):
         np.random.shuffle(train_data)
 
         batch_start = 0
-        pbar = tqdm.tqdm(total=(train_data.shape[0] // BATCH_SIZE) * BATCH_SIZE, leave=False)
+        pbar = tqdm.tqdm(total=(train_data.shape[0] // batch_size) * batch_size, leave=False)
 
         # Leave out final incomplete batch
-        while batch_start + BATCH_SIZE < train_data.shape[0]:
+        while batch_start + batch_size < train_data.shape[0]:
             # Collect minibatch data
-            current_minibatch_size = min(BATCH_SIZE, train_data.shape[0] - batch_start)
+            current_minibatch_size = min(batch_size, train_data.shape[0] - batch_start)
             minibatch = train_data[batch_start : batch_start + current_minibatch_size]
 
             # Run training step
@@ -68,7 +74,7 @@ def train(model_name, epochs=50, print_model_summary=True):
             # Increment and display progress info
             pbar.update(current_minibatch_size)
             pbar.set_description(model.status())
-            batch_start += BATCH_SIZE
+            batch_start += current_minibatch_size
 
         # Save model
         model.save_weights()
@@ -79,11 +85,9 @@ def train(model_name, epochs=50, print_model_summary=True):
 
 
 if __name__ == '__main__':
-    DEFAULT_NAME = "simple_conv_1"
+    argparser = argparse.ArgumentParser(description="Train a model from the model registry")
+    argparser.add_argument("model_name", type=str)
+    argparser.add_argument("-d", "--debug", action="store_true", help="Display extra information about model")
+    args = argparser.parse_args()
 
-    if len(sys.argv) >= 2:
-        name = sys.argv[1]
-    else:
-        name = DEFAULT_NAME
-
-    train(name)
+    train(args.model_name, print_model_summary=args.debug)

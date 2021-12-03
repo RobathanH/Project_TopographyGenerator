@@ -68,8 +68,6 @@ class DeepFillHandler(ModelHandlerBase):
         return "\n".join(out)
 
     def train_minibatch(self, minibatch):
-        super(DeepFillHandler, self).train_minibatch(minibatch)
-
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
         x = torch.tensor(minibatch).to(DEVICE)
 
@@ -98,6 +96,8 @@ class DeepFillHandler(ModelHandlerBase):
         self.epoch_disc_loss += disc_loss.item()
 
     def log_metrics(self, epoch_idx, val_data, epoch_complete=True):
+        super(DeepFillHandler, self).log_metrics(epoch_idx, val_data, epoch_complete=epoch_complete)
+
         # Find val loss 
         total_val_gen_loss = 0
         total_val_gen_recon_loss = 0
@@ -138,10 +138,11 @@ class DeepFillHandler(ModelHandlerBase):
         self.writer.add_scalar("eval/disc_loss", val_disc_loss, self.log_step)#, epoch_idx)
 
         # Log train loss
-        self.writer.add_scalar("train/gen_loss", self.epoch_gen_loss / self.epoch_size, self.log_step)#, epoch_idx)
-        self.writer.add_scalar("train/gen_recon_loss", self.epoch_gen_recon_loss / self.epoch_size, self.log_step)#, epoch_idx)
-        self.writer.add_scalar("train/gen_gan_loss", self.epoch_gen_gan_loss / self.epoch_size, self.log_step)#, epoch_idx)
-        self.writer.add_scalar("train/disc_loss", self.epoch_disc_loss / self.epoch_size, self.log_step)#, epoch_idx)
+        if self.epoch_size != 0:
+            self.writer.add_scalar("train/gen_loss", self.epoch_gen_loss / self.epoch_size, self.log_step)#, epoch_idx)
+            self.writer.add_scalar("train/gen_recon_loss", self.epoch_gen_recon_loss / self.epoch_size, self.log_step)#, epoch_idx)
+            self.writer.add_scalar("train/gen_gan_loss", self.epoch_gen_gan_loss / self.epoch_size, self.log_step)#, epoch_idx)
+            self.writer.add_scalar("train/disc_loss", self.epoch_disc_loss / self.epoch_size, self.log_step)#, epoch_idx)
 
         # Increment log step
         self.log_step += 1
@@ -158,7 +159,8 @@ class DeepFillHandler(ModelHandlerBase):
             example_reconstructions = final_output.detach().cpu().numpy().reshape(example_imgs.shape)
             example_masked_imgs = ((1 - example_masks) * example_inputs + example_masks * 1.1 * torch.max(torch.abs(example_inputs))).detach().cpu().numpy().reshape(example_imgs.shape)
 
-        data.util.save_image_lists([example_imgs, example_masked_imgs, example_reconstructions], ["Original", "Masked", "Reconstruction"],
+        titles = lambda col, row : ["Original", "Masked", "Reconstruction"][col]
+        data.util.save_image_lists([example_imgs, example_masked_imgs, example_reconstructions], titles,
                                     main_title=f"{self.name}_{epoch_name}", filename=os.path.join(self.log_folder(), f"{epoch_name}.png"))
 
         # Reset train loss vars
@@ -233,4 +235,30 @@ class DeepFillHandler(ModelHandlerBase):
             mask = torch.zeros((batch_size, 1, *self.img_dims), device=DEVICE)
             for i in range(batch_size):
                 mask[i, :, x_mask_start[i] : x_mask_start[i] + 2 * quarter_len_x, y_mask_start[i] : y_mask_start[i] + 2 * quarter_len_y] = torch.ones((1, 2 * quarter_len_x, 2 * quarter_len_y), device=DEVICE)
+            return mask
+
+        if self.MASK_TYPE == "corner_square":
+            x_mask_start = np.random.choice([0, self.img_dims[0] // 2], batch_size)
+            y_mask_start = np.random.choice([0, self.img_dims[1] // 2], batch_size)
+
+            mask = torch.zeros((batch_size, 1, *self.img_dims), device=DEVICE)
+            for i in range(batch_size):
+                mask[i, :, x_mask_start[i] : x_mask_start[i] + self.img_dims[0] // 2, y_mask_start[i] : y_mask_start[i] + self.img_dims[1] // 2] = torch.ones((1, self.img_dims[0] // 2, self.img_dims[1] // 2), device=DEVICE)
+            return mask
+
+        if self.MASK_TYPE == "half_mask":
+            base_mask = torch.zeros(1, *self.img_dims, device=DEVICE)
+            base_mask[:, :self.img_dims[0] // 2, :] += torch.ones(1, 1, 1, device=DEVICE)
+            possible_masks = [
+                base_mask,
+                base_mask.flip(1),
+                base_mask.transpose(1, 2),
+                base_mask.flip(1).transpose(1, 2)
+            ]
+            mask_choices = np.random.choice(range(4), batch_size)
+
+            mask = torch.zeros((batch_size, 1, *self.img_dims), device=DEVICE)
+            for i in range(batch_size):
+                mask[i] = possible_masks[mask_choices[i]]
+            
             return mask

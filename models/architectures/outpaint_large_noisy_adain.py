@@ -3,9 +3,16 @@ import torch.nn as nn
 
 
 from ..outpaint_blocks import *
+from ..conv_blocks import *
+from ..util import *
 from ..normalizers import Normalizer
 from ..activations import Activation
-from ..util import *
+
+
+'''
+Similar to architecture in outpaint_large, but with NoisyAdaIn layers included
+'''
+
 
 IMG_DIMS = (256, 128)
 REGION_DIMS = (40, 20)
@@ -13,14 +20,17 @@ REGION_DIMS = (40, 20)
 class Generator(nn.Module):
     '''
     Args:
-        latent_channels (int):  Latent channels at deepest feature layer
-        add_final_conv (bool):  Adds a final conv layer after the final NS-outpaint convtranspose layer to smooth results
-        upsampling_type (str):  Layer type used to upsample features to a higher resolution
-        min_channels (int):     Minimum channels at earliest and latest non-image feature layers
+        latent_channels (int):          Latent channels at deepest feature layer
+        add_final_conv (bool):          Adds a final conv layer after the final NS-outpaint convtranspose layer to smooth results
+        upsampling_type (str):          Layer type used to upsample features to a higher resolution
+        min_channels (int):             Minimum channels at earliest and latest non-image feature layers
         grb_kernel_shape (int, int):    Kernel shape for the GRB layers. Defaults to (7 width, 3 height)
     '''
     def __init__(self, latent_channels: int = 1024, add_final_conv: bool = False, upsampling_type: str = "conv_transpose", min_channels: int = 32, grb_kernel_shape: Tuple[int, int] = (7, 3)):
         super(Generator, self).__init__()
+
+        self.latent_channels = latent_channels
+        self.latent_width = 4
 
         # Normalizers and Activations shorthand
         enc_norm_act = {'normalizer': Normalizer.INSTANCE_NORM, 'activation': Activation.LRELU}
@@ -34,9 +44,6 @@ class Generator(nn.Module):
         c2 = min(c1 * 2, latent_channels)
         c3 = min(c2 * 2, latent_channels)
         c4 = min(c3 * 2, latent_channels)
-
-        # Latent width
-        latent_width = 4
 
         # Define upsampling layer type
         def upsampling_layer(in_channels: int, out_channels: int):
@@ -128,7 +135,7 @@ class Generator(nn.Module):
         )
 
         # --- RCT Transfer ---
-        self.rct = RecurrentContentTransfer(c4, c4 // 2, latent_width, **enc_norm_act)
+        self.rct = RecurrentContentTransfer(c4, c4 // 2, self.latent_width, **enc_norm_act)
 
         # --- Decoder ---
 
@@ -145,6 +152,7 @@ class Generator(nn.Module):
             Normalizer.INSTANCE_NORM.create_layer(c3)
         )
         self.shc_4 = SkipHorizontalConnection(c3, kernel_size=3, **dec_norm_act)
+        self.ada_4 = NoisyAdaIn((4 * self.latent_width, 2 * self.latent_width), c3, latent_channels, 1, id_init=True, activation=Activation.NONE)
 
         # Stage -3: 8 -> 16
         self.decoder_3 = nn.Sequential(
@@ -162,6 +170,7 @@ class Generator(nn.Module):
             Normalizer.INSTANCE_NORM.create_layer(c2)
         )
         self.shc_3 = SkipHorizontalConnection(c2, kernel_size=3, **dec_norm_act)
+        self.ada_3 = NoisyAdaIn((8 * self.latent_width, 4 * self.latent_width), c2, latent_channels, 1, id_init=True, activation=Activation.NONE)
 
         # Stage -2: 16 -> 32
         self.decoder_2 = nn.Sequential(
@@ -179,6 +188,7 @@ class Generator(nn.Module):
             Normalizer.INSTANCE_NORM.create_layer(c1)
         )
         self.shc_2 = SkipHorizontalConnection(c1, kernel_size=3, **dec_norm_act)
+        self.ada_2 = NoisyAdaIn((16 * self.latent_width, 8 * self.latent_width), c1, latent_channels, 1, id_init=True, activation=Activation.NONE)
 
         # Stage -1: 32 -> 64
         self.decoder_1 = nn.Sequential(
@@ -186,6 +196,7 @@ class Generator(nn.Module):
             Normalizer.INSTANCE_NORM.create_layer(c0)
         )
         self.shc_1 = SkipHorizontalConnection(c0, kernel_size=3, **dec_norm_act)
+        self.ada_1 = NoisyAdaIn((32 * self.latent_width, 16 * self.latent_width), c0, latent_channels, 1, id_init=True, activation=Activation.NONE)
 
         # Stage -0: 64 -> 128
         if add_final_conv:
@@ -219,18 +230,79 @@ class Generator(nn.Module):
 
         dec_4 = self.rct(enc_4)
 
-        dec_3 = self.shc_4(self.decoder_4(dec_4), enc_3)
-        dec_2 = self.shc_3(self.decoder_3(dec_3), enc_2)
-        dec_1 = self.shc_2(self.decoder_2(dec_2), enc_1)
-        dec_0 = self.shc_1(self.decoder_1(dec_1), enc_0)
+        dec_3 = self.ada_4((self.shc_4(self.decoder_4(dec_4), enc_3), dec_4))[0]
+        dec_2 = self.ada_3((self.shc_3(self.decoder_3(dec_3), enc_2), dec_4))[0]
+        dec_1 = self.ada_2((self.shc_2(self.decoder_2(dec_2), enc_1), dec_4))[0]
+        dec_0 = self.ada_1((self.shc_1(self.decoder_1(dec_1), enc_0), dec_4))[0]
         out = self.decoder_0(dec_0)
         
         return out
 
+'''
+Version of noisy adain generator where ada layers are added before skip horizontal connection
+'''
+class Generator2(Generator):
+    def forward(self, full_image: torch.Tensor) -> torch.Tensor:
+          # Remove right half of image
+        input = torch.tensor_split(full_image, 2, dim=2)[0]
+
+        enc_0 = self.encoder_0(input)
+        enc_1 = self.encoder_1(enc_0)
+        enc_2 = self.encoder_2(enc_1)
+        enc_3 = self.encoder_3(enc_2)
+        enc_4 = self.encoder_4(enc_3)
+
+        dec_4 = self.rct(enc_4)
+
+        dec_3 = self.shc_4(self.ada_4((self.decoder_4(dec_4), dec_4))[0], enc_3)
+        dec_2 = self.shc_3(self.ada_3((self.decoder_3(dec_3), dec_4))[0], enc_2)
+        dec_1 = self.shc_2(self.ada_2((self.decoder_2(dec_2), dec_4))[0], enc_1)
+        dec_0 = self.shc_1(self.ada_1((self.decoder_1(dec_1), dec_4))[0], enc_0)
+        out = self.decoder_0(dec_0)
+        
+        return out
+
+    '''
+    Generate a new image from a given latent representation, without the SHC layers which
+    require information about the encoding process.
+    Args:
+        latent (torch.Tensor):  Latent representations of windows to generate in isolation.
+                                Shape = (batch_size, self.latent_channels, self.latent_width, self.latent_width)
+    '''
+    def generate_from_latent(self, latent: torch.Tensor) -> torch.Tensor:
+        # Ada layers are hardcoded to apply to 2 windows side-by-side (one as input, one as generated),
+        # so we have to create a fake left-image-side to use which doesn't change channel mean/variance
+        # statistics. Thus, we will duplicate generated decoding and stitch two copies of it side-by-side
+        # as Ada layer input.
+        # To avoid forcing features on the left side of the generated image to be contiguous with features
+        # on the right side of the image, we will undo this duplication step whenever we pass through a
+        # convolutional module.
+        pre_ada_dec_3 = self.decoder_4(latent)
+        pre_ada_dec_3 = torch.cat([pre_ada_dec_3, pre_ada_dec_3], dim=2)
+        post_ada_dec_3 = self.ada_4((pre_ada_dec_3, latent))[0]
+        dec_3 = torch.tensor_split(post_ada_dec_3, 2, dim=2)[1]
+
+        pre_ada_dec_2 = self.decoder_3(dec_3)
+        pre_ada_dec_2 = torch.cat([pre_ada_dec_2, pre_ada_dec_2], dim=2)
+        post_ada_dec_2 = self.ada_3((pre_ada_dec_2, latent))[0]
+        dec_2 = torch.tensor_split(post_ada_dec_2, 2, dim=2)[1]
+
+        pre_ada_dec_1 = self.decoder_2(dec_2)
+        pre_ada_dec_1 = torch.cat([pre_ada_dec_1, pre_ada_dec_1], dim=2)
+        post_ada_dec_1 = self.ada_2((pre_ada_dec_1, latent))[0]
+        dec_1 = torch.tensor_split(post_ada_dec_1, 2, dim=2)[1]
+
+        pre_ada_dec_0 = self.decoder_1(dec_1)
+        pre_ada_dec_0 = torch.cat([pre_ada_dec_0, pre_ada_dec_0], dim=2)
+        post_ada_dec_0 = self.ada_1((pre_ada_dec_0, latent))[0]
+        dec_0 = torch.tensor_split(post_ada_dec_0, 2, dim=2)[1]
+
+        out = self.decoder_0(dec_0)
+        return out
 
 
 '''
-Use SnPatchGan style discriminator from deepfill v2
+Discriminator used in NS-outpaint
 '''
 class Discriminator(nn.Module):
     '''

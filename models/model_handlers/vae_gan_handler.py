@@ -67,8 +67,6 @@ class VaeGanHandler(ModelHandlerBase):
         return "\n".join(out)
 
     def train_minibatch(self, minibatch):
-        super(VaeGanHandler, self).train_minibatch(minibatch)
-        
         minibatch = minibatch.reshape(minibatch.shape[:1] + (1,) + minibatch.shape[1:])
         x = torch.tensor(minibatch).to(DEVICE)
 
@@ -95,6 +93,8 @@ class VaeGanHandler(ModelHandlerBase):
         self.epoch_disc_loss += discriminator_loss.item()
 
     def log_metrics(self, epoch_idx, val_data, epoch_complete=True):
+        super(VaeGanHandler, self).log_metrics(epoch_idx, val_data, epoch_complete=epoch_complete)
+
         # Find val loss
         total_val_vae_loss = 0
         total_val_vae_recon_loss = 0

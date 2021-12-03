@@ -36,6 +36,9 @@ class ModelHandlerBase:
 
         self.writer = None
 
+        # Save default batch size (larger models may need smaller batch sizes)
+        self.batch_size = 32
+
 
     def model_folder(self):
         script_folder = os.path.dirname(os.path.realpath(__file__))
@@ -57,12 +60,12 @@ class ModelHandlerBase:
         minibatch (np.ndarray): shape = (batch_size,) + img_dims
     '''
     def train_minibatch(self, minibatch):
+        raise NotImplementedError
+
+    # Triggers val tests, writing to tensorboard, and optionally resetting epoch loss average vars
+    def log_metrics(self, epoch_idx, val_data, epoch_complete=True):
         if self.writer is None:
             self.writer = tensorboard.SummaryWriter(log_dir=self.log_folder())
-
-    # Triggers resetting epoch average loss vars, and writing to tensorboard
-    def epoch_complete(self, epoch_idx, val_data):
-        raise NotImplementedError
 
     # Triggers short status message about current average loss
     def status(self):

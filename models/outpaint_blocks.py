@@ -166,18 +166,34 @@ class SkipHorizontalConnection(nn.Module):
         self.final_activation = activation.create_layer()
 
     '''
+    Processes a portion of the partially decoded features by combining
+    them with spatially-corresponding partially encoded features.
+    Performs entire skip horizontal connection without the stitching step.
+    Inputs from encoder and decoder are assumed to have the same size,
+    and correspond to the same region of the image.
     Args:
-        x:          Partially decoded features
-        shortcut:   The partially encoded features from the source image
+        from_decoder (torch.Tensor)
+        from_encoder (torch.Tensor)
     '''
-    def forward(self, x, shortcut):
+    def combine(self, from_decoder, from_encoder):
+        combined = torch.cat([from_decoder, from_encoder], dim=1)
+        combined = self.layers(combined)
+        combined = combined + from_encoder
+        combined = self.final_norm(combined)
+        combined = self.final_activation(combined)
+        return combined
+
+
+    '''
+    Args:
+        x:              Partially decoded features
+        left_shortcut:  The partially encoded features from the source image 
+                        (left half of generated region)
+    '''
+    def forward(self, x, left_shortcut):
         left_x, right_x = torch.tensor_split(x, 2, dim=2)
-        combined_features = torch.cat([left_x, shortcut], dim=1)
-        processed = self.layers(combined_features)
-        processed = shortcut + processed
-        processed = self.final_norm(processed)
-        processed = self.final_activation(processed)
-        stitched = torch.cat([processed, right_x], dim=2)
+        left_combined = self.combine(left_x, left_shortcut)
+        stitched = torch.cat([left_combined, right_x], dim=2)
         return stitched
 
 
@@ -223,9 +239,18 @@ class RecurrentContentTransfer(nn.Module):
             activation.create_layer()
         )
 
-    def forward(self, x):
+    '''
+    Uses the LSTM layers to generate new latent image adjacent to
+    the given latent image, but doesn't stitch together with given latent
+    image
+    Args:
+        latent (torch.Tensor)
+    Returns:
+        generated_adjacent_latent (torch.Tensor)
+    '''
+    def generate(self, latent):
         # Reduce channel count into bottleneck
-        bottlenecked = self.bottleneck_in(x) # N, C, W, H
+        bottlenecked = self.bottleneck_in(latent) # N, C, W, H
         N, C, W, H = bottlenecked.shape
 
         # Rearrange into lstm format
@@ -235,7 +260,7 @@ class RecurrentContentTransfer(nn.Module):
 
         # Pass through LSTM
         out, (h, c) = self.lstm(sequenced_in)
-        sequenced_out = torch.zeros(self.input_width, x.shape[0], self.lstm_features).to(DEVICE) # W, N, H*C
+        sequenced_out = torch.zeros(self.input_width, latent.shape[0], self.lstm_features).to(DEVICE) # W, N, H*C
         sequenced_out[0] = out[-1]
         for step in range(1, self.input_width):
             out, (h, c) = self.lstm(out[-1:], (h, c))
@@ -249,8 +274,19 @@ class RecurrentContentTransfer(nn.Module):
         # Increase channel count out of bottleneck
         out = self.bottleneck_out(bottlenecked_out)
 
+        return out
+
+    '''
+    Extends the given latent image to the right with newly generated
+    latent features.
+    Args:
+        latent (torch.Tensor)
+    '''
+    def forward(self, latent):
+        generated_latent = self.generate(latent)
+
         # Stitch together input and produced features
-        stitched = torch.cat([x, out], dim=2)
+        stitched = torch.cat([latent, generated_latent], dim=2)
 
         return stitched
 
